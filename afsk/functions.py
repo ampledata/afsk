@@ -41,49 +41,36 @@ def bit_stuff(data):
             count = 0
 
 
-def bit_unstuff(data):
-    pass
 
-
-def fcs(bits):
-    '''
-    Append running bitwise FCS CRC checksum to end of generator
-    '''
+def fcs_crc(bits):
+    """Append running bitwise FCS CRC checksum to end of generator."""
     fcs = afsk.FCS()
     for bit in bits:
         yield bit
         fcs.update_bit(bit)
 
-#    test = bitarray()
-#    for byte in (digest & 0xff, digest >> 8):
-#        print byte
-#        for i in range(8):
-#            b = (byte >> i) & 1 == 1
-#            test.append(b)
-#            yield b
-
     # append fcs digest to bit stream
 
     # n.b. wire format is little-bit-endianness in addition to little-endian
-    digest = bitarray(endian="little")
+    digest = bitarray(endian='little')
     digest.frombytes(fcs.digest())
     for bit in digest:
         yield bit
 
 
 def fcs_validate(bits):
-    buffer = bitarray()
+    buf = bitarray()
     fcs = afsk.FCS()
 
     for bit in bits:
-        buffer.append(bit)
-        if len(buffer) > 16:
-            bit = buffer.pop(0)
+        buf.append(bit)
+        if len(buf) > 16:
+            bit = buf.pop(0)
             fcs.update(bit)
             yield bit
 
-    if buffer.tobytes() != fcs.digest():
-        raise Exception("FCS checksum invalid.")
+    if buf.tobytes() != fcs.digest():
+        raise Exception('FCS checksum invalid.')
 
 
 def encode(binary_data):
@@ -98,13 +85,14 @@ def encode(binary_data):
 
     # set volume to 1/2, preceed packet with 1/20 s silence to allow for
     # startup glitches
-    for sample in itertools.chain(
+    samples = itertools.chain(
         audiogen.silence(1.05),
         modulate(framed_data),
         # For some reason this results in choppy audio from the soundcard:
         # multiply(modulate(framed_data), constant(0.5)),
-        audiogen.silence(1.05),
-    ):
+        audiogen.silence(1.05)
+    )
+    for sample in samples:
         yield sample
 
 

@@ -19,8 +19,8 @@ from .constants import (LOG_LEVEL, LOG_FORMAT, MARK_HZ, SPACE_HZ,  # NOQA
                         BAUD_RATE, TWO_PI, DEFAULT_INFO, DEFAULT_DESTINATION,
                         DEFAULT_DIGIPEATERS)
 
-from .functions import (bit_stuff, bit_unstuff, fcs, fcs_validate,   # NOQA
-                        encode, modulate, nrzi, frame)
+from .functions import (bit_stuff, fcs_crc, fcs_validate, encode,  # NOQA
+                        modulate, nrzi, frame)
 
 from .classes import FCS, AX25, UI  # NOQA
 

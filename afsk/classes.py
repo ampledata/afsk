@@ -18,6 +18,8 @@ __license__ = 'Simplified BSD License'
 
 class AX25(object):
 
+    """AX25 Class Object."""
+
     _logger = logging.getLogger(__name__)
     if not _logger.handlers:
         _logger.setLevel(afsk.LOG_LEVEL)
@@ -45,15 +47,15 @@ class AX25(object):
         )
 
     @classmethod
-    def callsign_encode(self, callsign):
+    def callsign_encode(cls, callsign):
         callsign = callsign.upper()
         if callsign.find(b"-") > 0:
             callsign, ssid = callsign.split(b"-")
         else:
             ssid = b"0"
 
-        assert(len(ssid) == 1)
-        assert(len(callsign) <= 6)
+        assert len(ssid) == 1
+        assert len(callsign) <= 6
 
         callsign = b"{callsign:6s}{ssid}".format(callsign=callsign, ssid=ssid)
 
@@ -98,17 +100,6 @@ class AX25(object):
 
         return flag + afsk.bit_stuff(bits) + flag
 
-    @classmethod
-    def parse(cls, bits):
-        # todo
-        raise Exception("Not implemented")
-        return cls(
-            destination=None,
-            source=None,
-            digipeaters=None,
-            info=None
-        )
-
     def fcs(self):
         content = bitarray(endian="little")
         content.frombytes("".join([self.header(), self.info]))
@@ -149,8 +140,8 @@ class FCS(object):
         if check != bit:
             self.fcs ^= 0x8408
 
-    def update(self, bytes):
-        for byte in (ord(b) for b in bytes):
+    def update(self, ubytes):
+        for byte in (ord(b) for b in ubytes):
             for i in range(7, -1, -1):
                 self.update_bit((byte >> i) & 0x01 == 1)
 

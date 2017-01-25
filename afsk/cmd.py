@@ -88,7 +88,7 @@ def cli(arguments=None):
     frame.path = args.digipeaters.split(b',')
     # audio = afsk.encode(frame)
 
-    _logger.info(r"Sending packet: '{0}'".format(packet))
+    _logger.info("Sending Packet: '%s'", packet)
     _logger.debug(r"Packet bits:\n{0!r}".format(packet.unparse()))
 
     audio = afsk.encode(packet.unparse())
@@ -96,7 +96,7 @@ def cli(arguments=None):
     if args.output == '-':
         audiogen.sampler.write_wav(sys.stdout, audio)
     elif args.output is not None:
-        with open(args.output, 'wb') as f:
-            audiogen.sampler.write_wav(f, audio)
+        with open(args.output, 'wb') as out_fd:
+            audiogen.sampler.write_wav(out_fd, audio)
     else:
         audiogen.sampler.play(audio, blocking=True)
