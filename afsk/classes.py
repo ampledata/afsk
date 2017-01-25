@@ -5,52 +5,15 @@
 
 import logging
 import logging.handlers
-import socket
 import struct
-import sys
 
 from bitarray import bitarray
-
-import audiogen
 
 import afsk
 
 __author__ = 'Christopher H. Casebeer <c@chc.name>'
-__copyright__ = 'Copyright (c) 2013 Christopher H. Casebeer. All rights reserved.'
+__copyright__ = 'Copyright 2013 Christopher H. Casebeer. All rights reserved.'
 __license__ = 'Simplified BSD License'
-
-
-class FCS(object):
-
-    _logger = logging.getLogger(__name__)
-    if not _logger.handlers:
-        _logger.setLevel(afsk.LOG_LEVEL)
-        _console_handler = logging.StreamHandler()
-        _console_handler.setLevel(afsk.LOG_LEVEL)
-        _console_handler.setFormatter(afsk.LOG_FORMAT)
-        _logger.addHandler(_console_handler)
-        _logger.propagate = False
-
-	def __init__(self):
-		self.fcs = 0xffff
-
-	def update_bit(self, bit):
-		check = (self.fcs & 0x1 == 1)
-		self.fcs >>= 1
-		if check != bit:
-			self.fcs ^= 0x8408
-
-	def update(self, bytes):
-		for byte in (ord(b) for b in bytes):
-			for i in range(7,-1,-1):
-				self.update_bit((byte >> i) & 0x01 == 1)
-
-	def digest(self):
-#		print ~self.fcs
-#		print "%r" % struct.pack("<H", ~self.fcs % 2**16)
-#		print "%r" % "".join([chr((~self.fcs & 0xff) % 256), chr((~self.fcs >> 8) % 256)])
-		# digest is two bytes, little endian
-		return struct.pack("<H", ~self.fcs % 2**16)
 
 
 class AX25(object):
@@ -64,102 +27,133 @@ class AX25(object):
         _logger.addHandler(_console_handler)
         _logger.propagate = False
 
-	def __init__(self, destination=b"APRS", source=b"", digipeaters=(b"RELAY", b"WIDE2-1"), info=b"\""):
-		self.flag = b"\x7e"
+    def __init__(self, source, info, destination=None, digipeaters=None):
+        self.source = source
+        self.info = info or afsk.DEFAULT_INFO
+        self.destination = destination or afsk.DEFAULT_DESTINATION
+        self.digipeaters = digipeaters or afsk.DEFAULT_DIGIPEATERS
 
-		self.destination = destination
-		self.source = source
-		self.digipeaters = digipeaters
+        self.flag = b"\x7e"
+        self._logger.info(locals())
 
-		self.info = info
+    def __str__(self):
+        return b"{source}>{destination},{digis}:{info}".format(
+            destination=self.destination,
+            source=self.source,
+            digis=b",".join(self.digipeaters),
+            info=self.info
+        )
 
-	@classmethod
-	def callsign_encode(self, callsign):
-		callsign = callsign.upper()
-		if callsign.find(b"-") > 0:
-			callsign, ssid = callsign.split(b"-")
-		else:
-			ssid = b"0"
+    @classmethod
+    def callsign_encode(self, callsign):
+        callsign = callsign.upper()
+        if callsign.find(b"-") > 0:
+            callsign, ssid = callsign.split(b"-")
+        else:
+            ssid = b"0"
 
-		assert(len(ssid) == 1)
-		assert(len(callsign) <= 6)
+        assert(len(ssid) == 1)
+        assert(len(callsign) <= 6)
 
-		callsign = b"{callsign:6s}{ssid}".format(callsign=callsign, ssid=ssid)
+        callsign = b"{callsign:6s}{ssid}".format(callsign=callsign, ssid=ssid)
 
-		# now shift left one bit, argh
-		return b"".join([chr(ord(char) << 1) for char in callsign])
+        # now shift left one bit, argh
+        return b"".join([chr(ord(char) << 1) for char in callsign])
 
-	def encoded_addresses(self):
-		address_bytes = bytearray(b"{destination}{source}{digis}".format(
-			destination = AX25.callsign_encode(self.destination),
-			source = AX25.callsign_encode(self.source),
-			digis = b"".join([AX25.callsign_encode(digi) for digi in self.digipeaters])
-		))
+    def encoded_addresses(self):
+        address_bytes = bytearray(b"{destination}{source}{digis}".format(
+            destination=AX25.callsign_encode(self.destination),
+            source=AX25.callsign_encode(self.source),
+            digis=b"".join(
+                [AX25.callsign_encode(digi) for digi in self.digipeaters])
+        ))
 
-		# set the low order (first, with eventual little bit endian encoding) bit
-		# in order to flag the end of the address string
-		address_bytes[-1] |= 0x01
+        # set the low order (first, with eventual little bit endian encoding)
+        # bit in order to flag the end of the address string
+        address_bytes[-1] |= 0x01
 
-		return address_bytes
+        return address_bytes
 
-	def header(self):
-		return b"{addresses}{control}{protocol}".format(
-			addresses = self.encoded_addresses(),
-			control = self.control_field, # * 8,
-			protocol = self.protocol_id,
-		)
-	def packet(self):
-		return b"{header}{info}{fcs}".format(
-			flag = self.flag,
-			header = self.header(),
-			info = self.info,
-			fcs = self.fcs()
-		)
-	def unparse(self):
-		flag = bitarray(endian="little")
-		flag.frombytes(self.flag)
+    def header(self):
+        return b"{addresses}{control}{protocol}".format(
+            addresses=self.encoded_addresses(),
+            control=self.control_field,  # * 8,
+            protocol=self.protocol_id,
+        )
 
-		bits = bitarray(endian="little")
-		bits.frombytes("".join([self.header(), self.info, self.fcs()]))
+    def packet(self):
+        return b"{header}{info}{fcs}".format(
+            flag=self.flag,
+            header=self.header(),
+            info=self.info,
+            fcs=self.fcs()
+        )
 
-		return flag + bit_stuff(bits) + flag
+    def unparse(self):
+        flag = bitarray(endian="little")
+        flag.frombytes(self.flag)
 
-	def __repr__(self):
-		return self.__str__()
-	def __str__(self):
-		return b"{source}>{destination},{digis}:{info}".format(
-			destination = self.destination,
-			source = self.source,
-			digis = b",".join(self.digipeaters),
-			info = self.info
-		)
+        bits = bitarray(endian="little")
+        bits.frombytes("".join([self.header(), self.info, self.fcs()]))
 
-	@classmethod
-	def parse(cls, bits):
-		# todo
-		raise Exception("Not implemented")
-		return cls(
-			destination=None,
-			source=None,
-			digipeaters=None,
-			info=None
-		)
+        return flag + afsk.bit_stuff(bits) + flag
 
-	def fcs(self):
-		content = bitarray(endian="little")
-		content.frombytes("".join([self.header(), self.info]))
+    @classmethod
+    def parse(cls, bits):
+        # todo
+        raise Exception("Not implemented")
+        return cls(
+            destination=None,
+            source=None,
+            digipeaters=None,
+            info=None
+        )
 
-		fcs = FCS()
-		for bit in content:
-			fcs.update_bit(bit)
-#		fcs.update(self.header())
-#		fcs.update(self.info)
-		return fcs.digest()
+    def fcs(self):
+        content = bitarray(endian="little")
+        content.frombytes("".join([self.header(), self.info]))
+
+        fcs = FCS()
+        for bit in content:
+            fcs.update_bit(bit)
+#        fcs.update(self.header())
+#        fcs.update(self.info)
+        return fcs.digest()
 
 
 class UI(AX25):
 
-	def __init__(self, destination=b"APRS", source=b"", digipeaters=(b"WIDE1-1", b"WIDE2-1"), info=b""):
-		AX25.__init__(self, destination, source, digipeaters, info)
-		self.control_field = b"\x03"
-		self.protocol_id = b"\xf0"
+    def __init__(self, source, info, destination=None, digipeaters=None):
+        super(UI, self).__init__(source, info, destination, digipeaters)
+        self.control_field = b"\x03"
+        self.protocol_id = b"\xf0"
+
+
+class FCS(object):
+
+    _logger = logging.getLogger(__name__)
+    if not _logger.handlers:
+        _logger.setLevel(afsk.LOG_LEVEL)
+        _console_handler = logging.StreamHandler()
+        _console_handler.setLevel(afsk.LOG_LEVEL)
+        _console_handler.setFormatter(afsk.LOG_FORMAT)
+        _logger.addHandler(_console_handler)
+        _logger.propagate = False
+
+    def __init__(self):
+        self.fcs = 0xffff
+
+    def update_bit(self, bit):
+        check = (self.fcs & 0x1 == 1)
+        self.fcs >>= 1
+        if check != bit:
+            self.fcs ^= 0x8408
+
+    def update(self, bytes):
+        for byte in (ord(b) for b in bytes):
+            for i in range(7, -1, -1):
+                self.update_bit((byte >> i) & 0x01 == 1)
+
+    def digest(self):
+        # digest is two bytes, little endian
+        return struct.pack("<H", ~self.fcs % 2**16)
