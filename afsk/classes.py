@@ -1,100 +1,70 @@
-# coding=utf8
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Python AFSK Module Class Definitions."""
 
 import logging
-logger = logging.getLogger(__name__)
-
+import logging.handlers
+import socket
 import struct
 import sys
-import argparse
 
 from bitarray import bitarray
+
 import audiogen
 
 import afsk
 
-def bit_stuff(data):
-	count = 0
-	for bit in data:
-		if bit:
-			count += 1
-		else:
-			count = 0
-		yield bit
-		# todo: do we stuff *after* fifth '1' or *before* sixth '1?'
-		if count == 5:
-			logger.debug("Stuffing bit")
-			yield False
-			count = 0
+__author__ = 'Christopher H. Casebeer <c@chc.name>'
+__copyright__ = 'Copyright (c) 2013 Christopher H. Casebeer. All rights reserved.'
+__license__ = 'Simplified BSD License'
 
-def bit_unstuff(data):
-	pass
 
 class FCS(object):
+
+    _logger = logging.getLogger(__name__)
+    if not _logger.handlers:
+        _logger.setLevel(afsk.LOG_LEVEL)
+        _console_handler = logging.StreamHandler()
+        _console_handler.setLevel(afsk.LOG_LEVEL)
+        _console_handler.setFormatter(afsk.LOG_FORMAT)
+        _logger.addHandler(_console_handler)
+        _logger.propagate = False
+
 	def __init__(self):
 		self.fcs = 0xffff
+
 	def update_bit(self, bit):
 		check = (self.fcs & 0x1 == 1)
 		self.fcs >>= 1
 		if check != bit:
 			self.fcs ^= 0x8408
+
 	def update(self, bytes):
 		for byte in (ord(b) for b in bytes):
 			for i in range(7,-1,-1):
 				self.update_bit((byte >> i) & 0x01 == 1)
+
 	def digest(self):
 #		print ~self.fcs
 #		print "%r" % struct.pack("<H", ~self.fcs % 2**16)
 #		print "%r" % "".join([chr((~self.fcs & 0xff) % 256), chr((~self.fcs >> 8) % 256)])
 		# digest is two bytes, little endian
 		return struct.pack("<H", ~self.fcs % 2**16)
-		
-def fcs(bits):
-	'''
-	Append running bitwise FCS CRC checksum to end of generator
-	'''
-	fcs = FCS()
-	for bit in bits:
-		yield bit
-		fcs.update_bit(bit)
 
-#	test = bitarray()
-#	for byte in (digest & 0xff, digest >> 8):
-#		print byte
-#		for i in range(8):
-#			b = (byte >> i) & 1 == 1
-#			test.append(b)
-#			yield b
-
-	# append fcs digest to bit stream
-
-	# n.b. wire format is little-bit-endianness in addition to little-endian
-	digest = bitarray(endian="little")
-	digest.frombytes(fcs.digest())
-	for bit in digest:
-		yield bit
-
-def fcs_validate(bits):
-	buffer = bitarray()
-	fcs = FCS()
-
-	for bit in bits:
-		buffer.append(bit)
-		if len(buffer) > 16:
-			bit = buffer.pop(0)
-			fcs.update(bit)
-			yield bit
-	
-	if buffer.tobytes() != fcs.digest():
-		raise Exception("FCS checksum invalid.")
 
 class AX25(object):
-	def __init__(
-		self,
-		destination=b"APRS", 
-		source=b"", 
-		digipeaters=(b"RELAY", b"WIDE2-1"), 
-		info=b"\""
-	):
+
+    _logger = logging.getLogger(__name__)
+    if not _logger.handlers:
+        _logger.setLevel(afsk.LOG_LEVEL)
+        _console_handler = logging.StreamHandler()
+        _console_handler.setLevel(afsk.LOG_LEVEL)
+        _console_handler.setFormatter(afsk.LOG_FORMAT)
+        _logger.addHandler(_console_handler)
+        _logger.propagate = False
+
+	def __init__(self, destination=b"APRS", source=b"", digipeaters=(b"RELAY", b"WIDE2-1"), info=b"\""):
 		self.flag = b"\x7e"
 
 		self.destination = destination
@@ -102,7 +72,7 @@ class AX25(object):
 		self.digipeaters = digipeaters
 
 		self.info = info
-	
+
 	@classmethod
 	def callsign_encode(self, callsign):
 		callsign = callsign.upper()
@@ -153,7 +123,7 @@ class AX25(object):
 		bits.frombytes("".join([self.header(), self.info, self.fcs()]))
 
 		return flag + bit_stuff(bits) + flag
-	
+
 	def __repr__(self):
 		return self.__str__()
 	def __str__(self):
@@ -174,7 +144,7 @@ class AX25(object):
 			digipeaters=None,
 			info=None
 		)
-	
+
 	def fcs(self):
 		content = bitarray(endian="little")
 		content.frombytes("".join([self.header(), self.info]))
@@ -186,87 +156,10 @@ class AX25(object):
 #		fcs.update(self.info)
 		return fcs.digest()
 
+
 class UI(AX25):
-	def __init__(
-		self,
-		destination=b"APRS", 
-		source=b"", 
-		digipeaters=(b"WIDE1-1", b"WIDE2-1"),
-		info=b""
-	):
-		AX25.__init__(
-			self, 
-			destination, 
-			source, 
-			digipeaters,
-			info
-		)
+
+	def __init__(self, destination=b"APRS", source=b"", digipeaters=(b"WIDE1-1", b"WIDE2-1"), info=b""):
+		AX25.__init__(self, destination, source, digipeaters, info)
 		self.control_field = b"\x03"
 		self.protocol_id = b"\xf0"
-			
-def main(arguments=None):
-	parser = argparse.ArgumentParser(description='')
-	parser.add_argument(
-		'-c',
-		'--callsign', 
-		required=True,
-		help='Your ham callsign. REQUIRED.'
-	)
-	parser.add_argument(
-		'info', 
-		metavar='INFO',
-		help='APRS message body'
-	)
-	parser.add_argument(
-		'--destination',
-		default=b'APRS',
-		help='AX.25 destination address. See http://www.aprs.org/aprs11/tocalls.txt'
-	)
-	parser.add_argument(
-		'-d',
-		'--digipeaters',
-		default=b'WIDE1-1,WIDE2-1',
-		help='Comma separated list of digipeaters to address.'
-	)
-	parser.add_argument(
-		'-o',
-		'--output', 
-		default=None,
-		help='Write audio to wav file. Use \'-\' for stdout.'
-	)
-	parser.add_argument(
-		'-v',
-		'--verbose',
-		action='count',
-		help='Print more debugging output.'
-	)
-	args = parser.parse_args(args=arguments)
-
-	if args.verbose == 0:
-		logging.basicConfig(level=logging.INFO)
-	elif args.verbose >=1:
-		logging.basicConfig(level=logging.DEBUG)
-
-	packet = UI(
-		destination=args.destination,
-		source=args.callsign, 
-		info=args.info,
-		digipeaters=args.digipeaters.split(b','),
-	)
-
-	logger.info(r"Sending packet: '{0}'".format(packet))
-	logger.debug(r"Packet bits:\n{0!r}".format(packet.unparse()))
-
-	audio = afsk.encode(packet.unparse())
-
-	if args.output == '-':
-		audiogen.sampler.write_wav(sys.stdout, audio)
-	elif args.output is not None:
-		with open(args.output, 'wb') as f:
-			audiogen.sampler.write_wav(f, audio)
-	else:
-		audiogen.sampler.play(audio, blocking=True)
-
-if __name__ == "__main__":
-	main()
-
