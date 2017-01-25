@@ -29,30 +29,35 @@ class AX25(object):
         _logger.addHandler(_console_handler)
         _logger.propagate = False
 
-    def __init__(self, source, info, destination=None, digipeaters=None):
-        self.source = source
-        self.info = info or afsk.DEFAULT_INFO
-        self.destination = destination or afsk.DEFAULT_DESTINATION
-        self.digipeaters = digipeaters or afsk.DEFAULT_DIGIPEATERS
+    __slots__ = ['frame', 'source', 'destination', 'path', 'text']
 
-        self.flag = b"\x7e"
+    def __init__(self, source, text, destination=None, path=None):
+        self.source = source
+        self.text = text or afsk.DEFAULT_INFO
+        self.destination = destination or afsk.DEFAULT_DESTINATION
+        self.path = path or afsk.DEFAULT_DIGIPEATERS
+
+        self.flag = chr(0x7E)
+        self.control_field = chr(0x03)
+        self.protocol_id = chr(0xF0)
+
         self._logger.info(locals())
 
     def __str__(self):
-        return b"{source}>{destination},{digis}:{info}".format(
+        return b"{source}>{destination},{path}:{text}".format(
             destination=self.destination,
             source=self.source,
-            digis=b",".join(self.digipeaters),
-            info=self.info
+            path=b','.join(self.path),
+            text=self.text
         )
 
     @classmethod
     def callsign_encode(cls, callsign):
         callsign = callsign.upper()
-        if callsign.find(b"-") > 0:
-            callsign, ssid = callsign.split(b"-")
+        if callsign.find(b'-') > 0:
+            callsign, ssid = callsign.split(b'-')
         else:
-            ssid = b"0"
+            ssid = b'0'
 
         assert len(ssid) == 1
         assert len(callsign) <= 6
@@ -60,15 +65,17 @@ class AX25(object):
         callsign = b"{callsign:6s}{ssid}".format(callsign=callsign, ssid=ssid)
 
         # now shift left one bit, argh
-        return b"".join([chr(ord(char) << 1) for char in callsign])
+        return b''.join([chr(ord(char) << 1) for char in callsign])
 
     def encoded_addresses(self):
-        address_bytes = bytearray(b"{destination}{source}{digis}".format(
-            destination=AX25.callsign_encode(self.destination),
-            source=AX25.callsign_encode(self.source),
-            digis=b"".join(
-                [AX25.callsign_encode(digi) for digi in self.digipeaters])
-        ))
+        address_bytes = bytearray(
+            b"{destination}{source}{digis}".format(
+                destination=AX25.callsign_encode(self.destination),
+                source=AX25.callsign_encode(self.source),
+                digis=b''.join(
+                    [AX25.callsign_encode(digi) for digi in self.path])
+            )
+        )
 
         # set the low order (first, with eventual little bit endian encoding)
         # bit in order to flag the end of the address string
@@ -77,47 +84,54 @@ class AX25(object):
         return address_bytes
 
     def header(self):
-        return b"{addresses}{control}{protocol}".format(
+        header = b"{addresses}{control}{protocol}".format(
             addresses=self.encoded_addresses(),
             control=self.control_field,  # * 8,
             protocol=self.protocol_id,
         )
 
+        self._logger.debug("header='%s'", header.encode('hex'))
+        return header
+
     def packet(self):
-        return b"{header}{info}{fcs}".format(
+        packet = b"{header}{info}{fcs}".format(
             flag=self.flag,
             header=self.header(),
-            info=self.info,
+            info=self.text,
             fcs=self.fcs()
         )
 
-    def unparse(self):
-        flag = bitarray(endian="little")
-        flag.frombytes(self.flag)
+        self._logger.debug("packet='%s'", packet)
+        return packet
 
-        bits = bitarray(endian="little")
-        bits.frombytes("".join([self.header(), self.info, self.fcs()]))
+    def unparse(self):
+        flag = bitarray(endian='little')
+        flag.frombytes(self.flag)
+        self._logger.debug("flag='%s'", flag)
+
+        bits = bitarray(endian='little')
+        bits.frombytes(''.join([self.header(), self.text, self.fcs()]))
+        self._logger.debug("bits='%s'", bits)
 
         return flag + afsk.bit_stuff(bits) + flag
 
     def fcs(self):
-        content = bitarray(endian="little")
-        content.frombytes("".join([self.header(), self.info]))
+        content = bitarray(endian='little')
+        content.frombytes(''.join([self.header(), self.text]))
 
         fcs = FCS()
         for bit in content:
             fcs.update_bit(bit)
-#        fcs.update(self.header())
-#        fcs.update(self.info)
-        return fcs.digest()
 
+        self._logger.debug("fcs.digest()='%s'", fcs.digest().encode('hex'))
+        return fcs.digest()
 
 class UI(AX25):
 
-    def __init__(self, source, info, destination=None, digipeaters=None):
-        super(UI, self).__init__(source, info, destination, digipeaters)
-        self.control_field = b"\x03"
-        self.protocol_id = b"\xf0"
+    def __init__(self, source, text, destination=None, path=None):
+        super(UI, self).__init__(source, text, destination, path)
+        self.control_field = chr(0x03)
+        self.protocol_id = chr(0xF0)
 
 
 class FCS(object):

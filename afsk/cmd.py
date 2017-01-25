@@ -35,23 +35,18 @@ def cli(arguments=None):
         required=True,
         help='Callsign.'
     )
+
     parser.add_argument(
-        'info',
-        metavar='INFO',
-        help='APRS message body'
-    )
-    parser.add_argument(
-        '--destination',
-        default=b'APRS',
+        '-d', '--destination',
+        default='APRS',
         help=(
             'AX.25 destination address. '
             'See http://www.aprs.org/aprs11/tocalls.txt'
         )
     )
     parser.add_argument(
-        '-d',
-        '--digipeaters',
-        default=b'WIDE1-1,WIDE2-1',
+        '-p', '--path',
+        default='WIDE1-1,WIDE2-1',
         help='Comma separated list of digipeaters to address.'
     )
     parser.add_argument(
@@ -66,6 +61,11 @@ def cli(arguments=None):
         action='count',
         help='Print more debugging output.'
     )
+    parser.add_argument(
+        'text',
+        metavar='TEXT',
+        help='APRS message text'
+    )
 
     args = parser.parse_args(args=arguments)
 
@@ -76,22 +76,17 @@ def cli(arguments=None):
 
     packet = afsk.UI(
         source=args.callsign,
-        info=args.info,
+        text=args.text,
         destination=args.destination,
-        digipeaters=args.digipeaters.split(b','),
+        path=args.path.split(b','),
     )
-
-    frame = aprs.Frame()
-    frame.destination = aprs.Callsign(args.destination),
-    frame.source = aprs.Callsign(args.callsign)
-    frame.text = args.info
-    frame.path = args.digipeaters.split(b',')
-    # audio = afsk.encode(frame)
+    packet_unparsed = packet.unparse()
 
     _logger.info("Sending Packet: '%s'", packet)
-    _logger.debug(r"Packet bits:\n{0!r}".format(packet.unparse()))
+    _logger.debug("Unparsed Packet: '%s'", packet_unparsed)
+    _logger.debug("Unparsed Packet: '%s'", packet_unparsed.tobytes().encode('hex'))
 
-    audio = afsk.encode(packet.unparse())
+    audio = afsk.encode(packet_unparsed)
 
     if args.output == '-':
         audiogen.sampler.write_wav(sys.stdout, audio)
