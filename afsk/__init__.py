@@ -16,8 +16,7 @@ Python AFSK Module.
 """
 
 from .constants import (LOG_LEVEL, LOG_FORMAT, MARK_HZ, SPACE_HZ,  # NOQA
-                        BAUD_RATE, TWO_PI, DEFAULT_INFO, DEFAULT_DESTINATION,
-                        DEFAULT_DIGIPEATERS)
+                        BAUD_RATE, TWO_PI, DEFAULT_TEXT, DEFAULT_DESTINATION)
 
 from .functions import (bit_stuff, fcs_crc, fcs_validate, encode,  # NOQA
                         modulate, nrzi, frame)
