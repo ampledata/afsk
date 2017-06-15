@@ -5,13 +5,18 @@
 
 import logging
 import math
+import os
 
 __author__ = 'Christopher H. Casebeer <c@chc.name>'
 __copyright__ = 'Copyright 2013 Christopher H. Casebeer. All rights reserved.'
 __license__ = 'Simplified BSD License'
 
 
-LOG_LEVEL = logging.DEBUG
+if bool(os.environ.get('DEBUG_ALL')) or bool(os.environ.get('DEBUG_AFSK')):
+    LOG_LEVEL = logging.DEBUG
+else:
+    LOG_LEVEL = logging.INFO
+
 LOG_FORMAT = logging.Formatter(
     ('%(asctime)s afsk %(levelname)s %(name)s.%(funcName)s:%(lineno)d - '
      '%(message)s'))

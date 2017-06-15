@@ -31,10 +31,10 @@ class AX25(object):
 
     __slots__ = ['frame', 'source', 'destination', 'path', 'text']
 
-    def __init__(self, source, text, destination=None, path=[]):
+    def __init__(self, source, destination=None, text=None, path=[]):
         self.source = source
-        self.text = text or afsk.DEFAULT_INFO
         self.destination = destination or afsk.DEFAULT_DESTINATION
+        self.text = text or afsk.DEFAULT_TEXT
         self.path = path
 
         self.flag = chr(0x7E)
@@ -43,7 +43,7 @@ class AX25(object):
 
         self._logger.info(locals())
 
-    def __repr__(self):
+    def __repr__2(self):
         full_path = [str(self.destination)]
         full_path.extend([str(p) for p in self.path])
         frame = b"{source}>{path}:{text}".format(
@@ -130,8 +130,8 @@ class AX25(object):
 
 class UI(AX25):
 
-    def __init__(self, source, text, destination=None, path=[]):
-        super(UI, self).__init__(source, text, destination, path)
+    def __init__(self, source, destination=None, text=None, path=[]):
+        super(UI, self).__init__(source, destination, text, path)
         self.control_field = chr(0x03)
         self.protocol_id = chr(0xF0)
 
